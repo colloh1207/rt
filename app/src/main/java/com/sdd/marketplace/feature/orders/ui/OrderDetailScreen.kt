@@ -193,8 +193,15 @@ fun OrderDetailScreen(navController: NavController, viewModel: OrderViewModel = 
                 Spacer(Modifier.height(16.dp))
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (order.status == OrderStatus.DELIVERED && order.paymentStatus != PaymentStatus.REFUNDED) {
-                        Button(onClick = { viewModel.confirmDelivery(order.id) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = SddPink)) {
-                            Icon(Icons.Filled.CheckCircle, "Confirm"); Spacer(Modifier.width(8.dp)); Text("Confirm Delivery")
+                        Button(
+                            onClick = {
+                                viewModel.confirmDelivery(order.id)
+                                navController.navigate(com.sdd.marketplace.core.navigation.Screen.Coupons.route)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = SddPink)
+                        ) {
+                            Icon(Icons.Filled.CheckCircle, "Confirm"); Spacer(Modifier.width(8.dp)); Text("Mark as Received")
                         }
                         OutlinedButton(onClick = { showRefundDialog = true }, modifier = Modifier.fillMaxWidth()) {
                             Text("Request Refund", color = MaterialTheme.colorScheme.error)

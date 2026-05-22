@@ -23,4 +23,6 @@ abstract class RepositoryModule {
     @Binds @Singleton abstract fun bindOrderRepository(impl: OrderRepositoryImpl): OrderRepository
     @Binds @Singleton abstract fun bindBlockRepository(impl: BlockRepositoryImpl): BlockRepository
     @Binds @Singleton abstract fun bindKycRepository(impl: KycRepositoryImpl): KycRepository
+    @Binds @Singleton abstract fun bindModerationRepository(impl: ModerationRepositoryImpl): ModerationRepository
+    @Binds @Singleton abstract fun bindCouponRepository(impl: CouponRepositoryImpl): CouponRepository
 }

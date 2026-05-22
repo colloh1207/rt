@@ -48,11 +48,17 @@ fun SettingsScreen(navController: NavController) {
                 }
             }
             SettingsSection("Preferences") {
+                SettingsItem(Icons.Outlined.Lock, "Privacy Settings", "Control who sees your location, bio and country") {
+                    navController.navigate(Screen.PrivacySettings.route)
+                }
                 SettingsItem(Icons.Outlined.Language, "Language", "Change app language") {
                     navController.navigate(Screen.ChangeLanguage.route)
                 }
                 SettingsItem(Icons.Outlined.Notifications, "Notifications", "Manage notification preferences") { }
                 SettingsItem(Icons.Outlined.Palette, "Theme", "Choose app appearance") { }
+                SettingsItem(Icons.Outlined.LocalOffer, "My Coupons", "View your earned coupon codes") {
+                    navController.navigate(Screen.Coupons.route)
+                }
             }
             SettingsSection("Legal") {
                 SettingsItem(Icons.Outlined.Gavel, "Terms & Conditions", "Read our terms of service") {

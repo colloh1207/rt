@@ -24,4 +24,5 @@ interface ProductRepository {
     suspend fun boostProduct(productId: String): Result<Unit>
     suspend fun incrementViewCount(productId: String)
     fun searchProducts(query: String): Flow<PagingData<Product>>
+    fun subscribeToRealtimeProducts(): Flow<Unit>
 }

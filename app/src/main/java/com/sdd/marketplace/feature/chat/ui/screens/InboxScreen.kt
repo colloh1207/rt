@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -29,6 +30,7 @@ import com.sdd.marketplace.core.ui.theme.*
 import com.sdd.marketplace.domain.model.*
 import com.sdd.marketplace.feature.chat.viewmodel.InboxViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InboxScreen(navController: NavController, viewModel: InboxViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsState()
@@ -42,10 +44,8 @@ fun InboxScreen(navController: NavController, viewModel: InboxViewModel = hiltVi
             title = { Text("Block User?") },
             text = { Text("They won't be able to message you or see your listings. You can unblock them in Settings.") },
             confirmButton = {
-                Button(
-                    onClick = { viewModel.blockUser(userId); showBlockConfirm = null },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) { Text("Block") }
+                Button(onClick = { viewModel.blockUser(userId); showBlockConfirm = null },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Block") }
             },
             dismissButton = { TextButton(onClick = { showBlockConfirm = null }) { Text("Cancel") } }
         )
@@ -59,18 +59,47 @@ fun InboxScreen(navController: NavController, viewModel: InboxViewModel = hiltVi
         TopAppBar(
             title = { Text("Inbox", fontWeight = FontWeight.Bold) },
             actions = {
-                IconButton(onClick = { }) { Icon(Icons.Outlined.Search, "Search") }
                 IconButton(onClick = { }) { Icon(Icons.Outlined.FilterList, "Filter") }
             }
         )
+
         OutlinedTextField(
             value = uiState.searchQuery, onValueChange = { viewModel.onSearchQueryChanged(it) },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
             placeholder = { Text("Search messages or users...") },
             leadingIcon = { Icon(Icons.Outlined.Search, "Search") },
+            trailingIcon = {
+                if (uiState.searchQuery.isNotBlank()) IconButton(onClick = { viewModel.onSearchQueryChanged("") }) { Icon(Icons.Filled.Clear, "Clear") }
+            },
             singleLine = true, shape = RoundedCornerShape(25.dp),
             colors = OutlinedTextFieldDefaults.colors(unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, focusedBorderColor = SddPink)
         )
+
+        // User search results
+        if (uiState.searchQuery.length >= 2 && uiState.userSearchResults.isNotEmpty()) {
+            Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Column {
+                    Text("Users", Modifier.padding(horizontal = 12.dp, vertical = 6.dp), fontSize = 12.sp, color = SddPink, fontWeight = FontWeight.Bold)
+                    uiState.userSearchResults.take(5).forEach { user ->
+                        Row(Modifier.fillMaxWidth().clickable {
+                            // TODO: open or create chat with this user
+                        }.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box {
+                                AsyncImage(model = user.avatarUrl, contentDescription = null, modifier = Modifier.size(36.dp).clip(CircleShape), contentScale = ContentScale.Crop)
+                                if (user.isOnline) Box(Modifier.size(10.dp).clip(CircleShape).background(OnlineGreen).align(Alignment.BottomEnd))
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(user.fullName, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                                Text(if (user.isOnline) "Online" else "Offline", fontSize = 11.sp, color = if (user.isOnline) OnlineGreen else MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (user.isVerified) VerifiedBadge()
+                        }
+                    }
+                }
+            }
+        }
+
         val filters = listOf("All", "Unread", "Orders", "Offers")
         ScrollableTabRow(selectedTabIndex = filters.indexOf(uiState.selectedFilter), edgePadding = 16.dp,
             containerColor = MaterialTheme.colorScheme.background, contentColor = SddPink) {
@@ -78,21 +107,28 @@ fun InboxScreen(navController: NavController, viewModel: InboxViewModel = hiltVi
                 Tab(selected = uiState.selectedFilter == filter, onClick = { viewModel.setFilter(filter) }, text = { Text(filter) })
             }
         }
+
         if (uiState.isLoading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = SddPink) }
         } else if (uiState.filteredChats.isEmpty()) {
-            EmptyState("No messages yet", "Start a conversation with a seller")
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Outlined.ChatBubbleOutline, "No Chats", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(64.dp))
+                    Spacer(Modifier.height(16.dp))
+                    Text("No messages yet", fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Browse products and message sellers to start chatting!", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                }
+            }
         } else {
-            LazyColumn {
+            LazyColumn(Modifier.fillMaxSize()) {
                 items(uiState.filteredChats, key = { it.id }) { chat ->
-                    val otherUser = chat.participants.firstOrNull()
                     ChatListItem(
                         chat = chat,
+                        currentUserId = "",
                         onClick = { navController.navigate(Screen.ChatDetail.createRoute(chat.id)) },
-                        onBlock = { otherUser?.id?.let { showBlockConfirm = it } },
-                        onReport = { otherUser?.id?.let { showReportSheet = it } }
+                        onLongPress = { }
                     )
-                    Divider(Modifier.padding(horizontal = 72.dp))
                 }
             }
         }
@@ -100,85 +136,52 @@ fun InboxScreen(navController: NavController, viewModel: InboxViewModel = hiltVi
 }
 
 @Composable
-fun ChatListItem(chat: Chat, onClick: () -> Unit, onBlock: () -> Unit, onReport: () -> Unit) {
-    val otherUser = chat.participants.firstOrNull()
-    var showMenu by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+fun ChatListItem(chat: Chat, currentUserId: String, onClick: () -> Unit, onLongPress: () -> Unit) {
+    val otherUser = chat.participants.firstOrNull { it.id != currentUserId }
+    val hasUnread = chat.unreadCount > 0
+
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically) {
         Box {
-            AsyncImage(model = otherUser?.avatarUrl, contentDescription = otherUser?.fullName,
+            AsyncImage(model = otherUser?.avatarUrl, contentDescription = null,
                 modifier = Modifier.size(52.dp).clip(CircleShape), contentScale = ContentScale.Crop)
             if (otherUser?.isOnline == true) {
-                OnlineIndicator(true, Modifier.align(Alignment.BottomEnd).offset(x = 2.dp, y = 2.dp))
+                Box(Modifier.size(13.dp).clip(CircleShape).background(OnlineGreen)
+                    .align(Alignment.BottomEnd).background(MaterialTheme.colorScheme.surface.copy(alpha = 0f)))
             }
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(otherUser?.fullName ?: "User", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                    if (otherUser?.isVerified == true) { Spacer(Modifier.width(4.dp)); VerifiedBadge() }
-                }
-                Text(chat.lastMessage?.sentAt?.take(5) ?: "", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(otherUser?.fullName ?: "Unknown", fontWeight = if (hasUnread) FontWeight.Bold else FontWeight.Normal, fontSize = 15.sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (otherUser?.isVerified == true) { Spacer(Modifier.width(2.dp)); VerifiedBadge() }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    chat.lastMessage?.content ?: "No messages yet",
-                    fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
-                )
-                if (chat.unreadCount > 0) {
-                    Box(Modifier.size(20.dp).clip(CircleShape).background(SddPink), contentAlignment = Alignment.Center) {
-                        Text("${chat.unreadCount}", color = androidx.compose.ui.graphics.Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
+            Spacer(Modifier.height(2.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val lastContent = when {
+                    chat.lastMessage?.isUnsent == true -> "Message unsent"
+                    chat.lastMessage?.type == MessageType.IMAGE -> "📷 Image"
+                    chat.lastMessage?.type == MessageType.LOCATION -> "📍 Location"
+                    else -> chat.lastMessage?.content ?: "Say hi!"
                 }
+                Text(lastContent, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp,
+                    color = if (hasUnread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (hasUnread) FontWeight.Medium else FontWeight.Normal, modifier = Modifier.weight(1f))
+            }
+            chat.product?.let {
+                Text("About: ${it.title}", fontSize = 11.sp, color = SddPink, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        Box {
-            IconButton(onClick = { showMenu = true }, modifier = Modifier.size(24.dp)) {
-                Icon(Icons.Filled.MoreVert, "More", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                DropdownMenuItem(leadingIcon = { Icon(Icons.Filled.Block, "Block", tint = MaterialTheme.colorScheme.error) },
-                    text = { Text("Block User", color = MaterialTheme.colorScheme.error) },
-                    onClick = { showMenu = false; onBlock() })
-                DropdownMenuItem(leadingIcon = { Icon(Icons.Filled.Flag, "Report", tint = MaterialTheme.colorScheme.error) },
-                    text = { Text("Report User", color = MaterialTheme.colorScheme.error) },
-                    onClick = { showMenu = false; onReport() })
-                DropdownMenuItem(leadingIcon = { Icon(Icons.Filled.Archive, "Archive") }, text = { Text("Archive") }, onClick = { showMenu = false })
-                DropdownMenuItem(leadingIcon = { Icon(Icons.Filled.Delete, "Delete", tint = MaterialTheme.colorScheme.error) },
-                    text = { Text("Delete Chat", color = MaterialTheme.colorScheme.error) }, onClick = { showMenu = false })
+        Spacer(Modifier.width(8.dp))
+        Column(horizontalAlignment = Alignment.End) {
+            Text(chat.updatedAt.takeLast(5), fontSize = 11.sp, color = if (hasUnread) SddPink else MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(4.dp))
+            if (hasUnread) {
+                Box(Modifier.size(20.dp).clip(CircleShape).background(SddPink), contentAlignment = Alignment.Center) {
+                    Text(if (chat.unreadCount > 99) "99+" else "${chat.unreadCount}", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
-}
-
-@Composable
-fun ReportUserDialog(userId: String, onReport: (ReportCategory, String) -> Unit, onDismiss: () -> Unit) {
-    var selectedCategory by remember { mutableStateOf(ReportCategory.SPAM) }
-    var description by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Filled.Flag, "Report", tint = MaterialTheme.colorScheme.error) },
-        title = { Text("Report User") },
-        text = {
-            Column {
-                Text("Select reason:", fontWeight = FontWeight.Medium)
-                Spacer(Modifier.height(8.dp))
-                ReportCategory.values().forEach { cat ->
-                    Row(Modifier.clickable { selectedCategory = cat }.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(selected = selectedCategory == cat, onClick = { selectedCategory = cat }, colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.error))
-                        Text(cat.label, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(description, { description = it }, label = { Text("Additional details (optional)") },
-                    modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 4)
-            }
-        },
-        confirmButton = {
-            Button(onClick = { onReport(selectedCategory, description) },
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Submit Report") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
-    )
+    HorizontalDivider(Modifier.padding(start = 80.dp), thickness = 0.5.dp)
 }

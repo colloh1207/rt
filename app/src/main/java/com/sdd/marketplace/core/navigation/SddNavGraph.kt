@@ -66,6 +66,11 @@ sealed class Screen(val route: String) {
     object MyReviews : Screen("my_reviews")
     object SavedItems : Screen("saved_items")
     object MySoldItems : Screen("my_sold_items")
+    object Coupons : Screen("coupons")
+    object PrivacySettings : Screen("privacy_settings")
+    object ModerationPanel : Screen("moderation_panel")
+    object SuspensionNotice : Screen("suspension_notice")
+    object Appeal : Screen("appeal")
 }
 
 val bottomNavItems = listOf(
@@ -82,7 +87,6 @@ val protectedRoutes = setOf(
     Screen.Inbox.route,
     Screen.PostProduct.route,
     Screen.EditProfile.route,
-    Screen.Wallet.route,
     Screen.Achievements.route,
     Screen.InviteEarn.route,
     Screen.Orders.route,
@@ -216,14 +220,6 @@ fun SddNavGraph() {
             }
         }
 
-        composable(Screen.Wallet.route) {
-            if (!authState.isAuthenticated) {
-                LoginRequiredScreen { navController.navigate(Screen.Login.route) }
-            } else {
-                WalletScreen(navController)
-            }
-        }
-
         composable(Screen.Achievements.route) {
             if (!authState.isAuthenticated) {
                 LoginRequiredScreen { navController.navigate(Screen.Login.route) }
@@ -297,6 +293,46 @@ fun SddNavGraph() {
         }
 
         composable(Screen.KycVerification.route) { KycVerificationScreen(navController) }
+
+        composable(Screen.Coupons.route) {
+            if (!authState.isAuthenticated) {
+                LoginRequiredScreen { navController.navigate(Screen.Login.route) }
+            } else {
+                com.sdd.marketplace.feature.profile.ui.screens.CouponsScreen(navController)
+            }
+        }
+
+        composable(Screen.PrivacySettings.route) {
+            if (!authState.isAuthenticated) {
+                LoginRequiredScreen { navController.navigate(Screen.Login.route) }
+            } else {
+                com.sdd.marketplace.feature.profile.ui.screens.PrivacySettingsScreen(navController)
+            }
+        }
+
+        composable(Screen.ModerationPanel.route) {
+            if (!authState.isAuthenticated) {
+                LoginRequiredScreen { navController.navigate(Screen.Login.route) }
+            } else {
+                com.sdd.marketplace.feature.moderation.ui.ModerationScreen(navController)
+            }
+        }
+
+        composable(Screen.SuspensionNotice.route) {
+            com.sdd.marketplace.feature.moderation.ui.SuspendedScreen(navController)
+        }
+
+        composable(Screen.Appeal.route) {
+            if (!authState.isAuthenticated) {
+                LoginRequiredScreen { navController.navigate(Screen.Login.route) }
+            } else {
+                com.sdd.marketplace.feature.moderation.ui.AppealScreen(
+                    onSubmitted = { navController.navigate(Screen.SuspensionNotice.route) { popUpTo(Screen.Appeal.route) { inclusive = true } } },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+        }
+
         composable(Screen.TermsConditions.route) { TermsConditionsScreen(navController) }
         composable(Screen.PrivacyPolicy.route) { PrivacyPolicyScreen(navController) }
         composable(Screen.SellerTerms.route) { TermsConditionsScreen(navController) }

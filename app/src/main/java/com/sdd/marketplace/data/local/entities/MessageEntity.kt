@@ -18,6 +18,8 @@ data class MessageEntity(
     val locationAddress: String?,
     val isRead: Boolean,
     val isDelivered: Boolean,
+    val isDeleted: Boolean = false,
+    val isUnsent: Boolean = false,
     val sentAt: String,
     val editedAt: String?
 )

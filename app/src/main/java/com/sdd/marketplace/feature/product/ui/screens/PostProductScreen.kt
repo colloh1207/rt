@@ -63,6 +63,46 @@ fun PostProductScreen(
         return
     }
 
+    // Max images warning dialog
+    if (uiState.maxImagesReached) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissMaxImagesWarning() },
+            icon = { Icon(Icons.Filled.PhotoLibrary, "Photos", tint = SddPink) },
+            title = { Text("Maximum Photos Reached") },
+            text = { Text("You can add a maximum of 5 photos per listing. Remove an existing photo to add a new one.") },
+            confirmButton = {
+                Button(onClick = { viewModel.dismissMaxImagesWarning() }, colors = ButtonDefaults.buttonColors(containerColor = SddPink)) {
+                    Text("Got it")
+                }
+            }
+        )
+    }
+
+    // Country mismatch warning dialog
+    uiState.countryMismatchWarning?.let { warning ->
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissCountryMismatch() },
+            icon = { Icon(Icons.Filled.Warning, "Warning", tint = Color(0xFFFF9800)) },
+            title = { Text("Country Mismatch Detected") },
+            text = {
+                Column {
+                    Text(warning, style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(12.dp))
+                    if (uiState.isUnderReview) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = Color(0xFFFF9800))
+                        Spacer(Modifier.height(4.dp))
+                        Text("Listing under review (5 minutes)...", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { viewModel.dismissCountryMismatch() }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))) {
+                    Text("I Understand")
+                }
+            }
+        )
+    }
+
     if (uiState.showLocationSheet) {
         LocationSearchSheet(
             suggestions = uiState.locationSuggestions,
@@ -233,7 +273,10 @@ fun Step1Content(uiState: PostProductUiState, viewModel: PostProductViewModel, o
     Column(Modifier.padding(16.dp)) {
         Text("Photos", fontWeight = FontWeight.Bold, fontSize = 16.sp)
         Spacer(Modifier.height(8.dp))
-        Text("Add up to 10 photos. First photo is the cover.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Add up to 5 photos. First photo is the cover.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            Text("${uiState.selectedImages.size}/5", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (uiState.selectedImages.size >= 5) MaterialTheme.colorScheme.error else SddPink)
+        }
         Spacer(Modifier.height(12.dp))
 
         if (uiState.selectedImages.isEmpty()) {

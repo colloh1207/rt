@@ -241,6 +241,23 @@ class ProductRepositoryImpl @Inject constructor(
         } catch (e: Exception) { Timber.e(e, "Error refreshing saved products") }
     }
 
+    override fun subscribeToRealtimeProducts(): kotlinx.coroutines.flow.Flow<Unit> = kotlinx.coroutines.flow.flow {
+        try {
+            val realtime = try {
+                io.github.jan.supabase.realtime.Realtime
+                kotlinx.coroutines.flow.emitAll(
+                    kotlinx.coroutines.flow.flow {
+                        while (true) {
+                            kotlinx.coroutines.delay(30_000)
+                            refreshFeaturedProducts()
+                            emit(Unit)
+                        }
+                    }
+                )
+            } catch (e: Exception) { kotlinx.coroutines.flow.emitAll(kotlinx.coroutines.flow.emptyFlow()) }
+        } catch (e: Exception) { timber.log.Timber.e(e) }
+    }
+
     private fun defaultCategories() = listOf(
         Category("popular", "Popular", "star", null),
         Category("women", "Women", "dress", null),

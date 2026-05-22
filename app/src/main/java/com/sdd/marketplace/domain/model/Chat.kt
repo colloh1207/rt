@@ -25,7 +25,12 @@ data class Message(
     val isRead: Boolean,
     val isDelivered: Boolean,
     val sentAt: String,
-    val editedAt: String?
+    val editedAt: String?,
+    val isDeleted: Boolean = false,
+    val isUnsent: Boolean = false,
+    val replyToId: String? = null,
+    val replyToContent: String? = null,
+    val replyToSenderName: String? = null
 )
 
 enum class MessageType {

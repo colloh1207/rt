@@ -31,6 +31,8 @@ class UserRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context
 ) : UserRepository {
 
+    override fun getUser(userId: String): Flow<User?> = getUserProfile(userId)
+
     override fun getUserProfile(userId: String): Flow<User?> = flow {
         try {
             val dto = postgrest["users"].select { filter { eq("id", userId) } }.decodeSingleOrNull<UserDto>()

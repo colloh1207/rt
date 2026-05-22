@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.sdd.marketplace.domain.model.Product
 import com.sdd.marketplace.domain.repository.AuthRepository
 import com.sdd.marketplace.domain.repository.ProductRepository
+import com.sdd.marketplace.domain.repository.UserRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -23,11 +24,15 @@ import java.io.FileOutputStream
 import java.net.URLEncoder
 import javax.inject.Inject
 
+const val MAX_IMAGES = 5
+
 data class LocationSuggestion(
     val displayName: String,
     val shortName: String,
     val lat: Double,
-    val lng: Double
+    val lng: Double,
+    val country: String? = null,
+    val countryCode: String? = null
 )
 
 data class PostProductUiState(
@@ -45,6 +50,7 @@ data class PostProductUiState(
     val location: String = "",
     val latitude: Double? = null,
     val longitude: Double? = null,
+    val locationCountryCode: String? = null,
     val deliveryOptions: List<String> = emptyList(),
     val returnPolicy: String = "",
     val isNegotiable: Boolean = false,
@@ -60,18 +66,23 @@ data class PostProductUiState(
     val showLocationSheet: Boolean = false,
     val showDeliverySheet: Boolean = false,
     val showReturnPolicySheet: Boolean = false,
-    val showPreview: Boolean = false
+    val showPreview: Boolean = false,
+    val countryMismatchWarning: String? = null,
+    val isUnderReview: Boolean = false,
+    val maxImagesReached: Boolean = false
 )
 
 sealed class PostProductEvent {
     object PostSuccess : PostProductEvent()
     data class ShowError(val message: String) : PostProductEvent()
+    object CountryMismatchRejected : PostProductEvent()
 }
 
 @HiltViewModel
 class PostProductViewModel @Inject constructor(
     private val productRepository: ProductRepository,
     private val authRepository: AuthRepository,
+    private val userRepository: UserRepository,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -96,11 +107,18 @@ class PostProductViewModel @Inject constructor(
 
     fun addImage(uri: Uri) {
         val current = _uiState.value.selectedImages.toMutableList()
-        if (current.size < 10) { current.add(uri); _uiState.update { it.copy(selectedImages = current) } }
+        if (current.size >= MAX_IMAGES) {
+            _uiState.update { it.copy(maxImagesReached = true) }
+            return
+        }
+        current.add(uri)
+        _uiState.update { it.copy(selectedImages = current, maxImagesReached = current.size >= MAX_IMAGES) }
     }
 
     fun removeImage(uri: Uri) =
-        _uiState.update { it.copy(selectedImages = it.selectedImages.filter { img -> img != uri }) }
+        _uiState.update { it.copy(selectedImages = it.selectedImages.filter { img -> img != uri }, maxImagesReached = false) }
+
+    fun dismissMaxImagesWarning() = _uiState.update { it.copy(maxImagesReached = false) }
 
     fun addTag(tag: String) {
         val tags = _uiState.value.tags.toMutableList()
@@ -123,6 +141,7 @@ class PostProductViewModel @Inject constructor(
     fun showReturnPolicySheet() = _uiState.update { it.copy(showReturnPolicySheet = true) }
     fun hideReturnPolicySheet() = _uiState.update { it.copy(showReturnPolicySheet = false) }
     fun togglePreview() = _uiState.update { it.copy(showPreview = !it.showPreview) }
+    fun dismissCountryMismatch() = _uiState.update { it.copy(countryMismatchWarning = null) }
 
     fun selectLocation(suggestion: LocationSuggestion) {
         _uiState.update {
@@ -130,10 +149,32 @@ class PostProductViewModel @Inject constructor(
                 location = suggestion.shortName,
                 latitude = suggestion.lat,
                 longitude = suggestion.lng,
+                locationCountryCode = suggestion.countryCode,
                 showLocationSheet = false,
                 locationSuggestions = emptyList()
             )
         }
+        checkCountryMismatch(suggestion.countryCode)
+    }
+
+    private fun checkCountryMismatch(listingCountryCode: String?) = viewModelScope.launch {
+        if (listingCountryCode == null) return@launch
+        try {
+            val userId = authRepository.getCurrentUserId() ?: return@launch
+            val user = userRepository.getUser(userId).firstOrNull() ?: return@launch
+            val registrationCountry = user.registrationCountry
+            if (registrationCountry != null && registrationCountry.uppercase() != listingCountryCode.uppercase()) {
+                _uiState.update {
+                    it.copy(
+                        countryMismatchWarning = "⚠ Country Mismatch Detected: Your account was registered in $registrationCountry but you're trying to list in $listingCountryCode. This listing will be placed under review for 5 minutes and may be automatically rejected.",
+                        isUnderReview = true
+                    )
+                }
+                kotlinx.coroutines.delay(5 * 60 * 1000L)
+                _uiState.update { it.copy(isUnderReview = false) }
+                _events.emit(PostProductEvent.CountryMismatchRejected)
+            }
+        } catch (e: Exception) { Timber.e(e) }
     }
 
     fun searchLocation(query: String) {
@@ -168,7 +209,9 @@ class PostProductViewModel @Inject constructor(
                     val lng = obj["lon"]?.jsonPrimitive?.content?.toDouble() ?: return@mapNotNull null
                     val address = obj["address"]?.jsonObject
                     val shortName = buildShortName(address, displayName)
-                    LocationSuggestion(displayName = displayName, shortName = shortName, lat = lat, lng = lng)
+                    val country = address?.get("country")?.jsonPrimitive?.content
+                    val countryCode = address?.get("country_code")?.jsonPrimitive?.content?.uppercase()
+                    LocationSuggestion(displayName = displayName, shortName = shortName, lat = lat, lng = lng, country = country, countryCode = countryCode)
                 } catch (e: Exception) { null }
             }
         } finally {
@@ -210,6 +253,10 @@ class PostProductViewModel @Inject constructor(
 
     fun submitProduct() = viewModelScope.launch {
         val state = _uiState.value
+        if (state.isUnderReview) {
+            _uiState.update { it.copy(error = "Your listing is under country mismatch review. Please wait.") }
+            return@launch
+        }
         val userId = authRepository.getCurrentUserId() ?: run {
             _events.emit(PostProductEvent.ShowError("Please sign in to post a product"))
             return@launch
@@ -217,6 +264,9 @@ class PostProductViewModel @Inject constructor(
 
         if (state.selectedImages.isEmpty()) {
             _uiState.update { it.copy(error = "Please add at least one photo") }; return@launch
+        }
+        if (state.selectedImages.size > MAX_IMAGES) {
+            _uiState.update { it.copy(error = "Maximum $MAX_IMAGES images allowed") }; return@launch
         }
 
         _uiState.update { it.copy(isLoading = true, isUploading = true, error = null, uploadProgress = 0f) }

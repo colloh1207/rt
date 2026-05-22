@@ -116,10 +116,38 @@ class ChatRepositoryImpl @Inject constructor(
         created.toDomain()
     }
 
-    override suspend fun sendMessage(chatId: String, content: String, type: String): Result<Message> = runCatching {
+    override suspend fun editMessage(messageId: String, newContent: String): Result<Unit> = runCatching {
+        postgrest["messages"].update(mapOf(
+            "content" to newContent,
+            "edited_at" to java.time.Instant.now().toString()
+        )) { filter { eq("id", messageId) } }
+        messageDao.updateMessageContent(messageId, newContent)
+    }
+
+    override suspend fun deleteMessage(messageId: String): Result<Unit> = runCatching {
+        postgrest["messages"].update(mapOf("is_deleted" to true)) { filter { eq("id", messageId) } }
+        messageDao.markMessageDeleted(messageId)
+    }
+
+    override suspend fun unsendMessage(messageId: String): Result<Unit> = runCatching {
+        postgrest["messages"].update(mapOf("is_unsent" to true, "content" to "")) { filter { eq("id", messageId) } }
+        messageDao.markMessageUnsent(messageId)
+    }
+
+    override fun searchUsers(query: String): kotlinx.coroutines.flow.Flow<List<com.sdd.marketplace.domain.model.User>> = flow {
+        try {
+            val dtos = postgrest["users"].select {
+                filter { ilike("full_name", "%$query%") }
+                limit(10)
+            }.decodeList<com.sdd.marketplace.data.remote.dto.UserDto>()
+            emit(dtos.map { it.toDomain() })
+        } catch (e: Exception) { Timber.e(e); emit(emptyList()) }
+    }
+
+    override suspend fun sendMessage(chatId: String, content: String, type: String, replyToId: String?): Result<Message> = runCatching {
         val userId = authRepository.getCurrentUserId() ?: throw Exception("Not authenticated")
         val request = SendMessageRequest(
-            chatId = chatId, senderId = userId, content = content, type = type
+            chatId = chatId, senderId = userId, content = content, type = type, replyToMessageId = replyToId
         )
         val created = postgrest["messages"].insert(request) { select() }.decodeSingle<MessageDto>()
         postgrest["chats"].update(mapOf(
